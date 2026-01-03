@@ -1,0 +1,16 @@
+Working app
+
+
+To do:
+ - push to git - probably need a new token?
+ - sounds are too quiet?
+ - spinners not text fields?
+ - should keep a log
+   - days  used [#used] / [#since installed] 
+   - hours here [#this app] total [#total]
+   - average time [minutes / day]
+
+To test current app:
+ - start (play button in device manager) pixel 7 pro emulator in Android Studio app
+ - "% npx react-native start" in one window
+ - "% npx react-native run-android" in a second
