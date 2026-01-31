@@ -1,13 +1,17 @@
 package com.medtimer.app
 
 import android.app.Application
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.Build
+import android.os.IBinder
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.medtimer.app.audio.BellPlayer
 import com.medtimer.app.data.AppDatabase
 import com.medtimer.app.data.Session
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import com.medtimer.app.service.MeditationTimerService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -52,7 +56,6 @@ data class MeditationUiState(
 class MeditationViewModel(application: Application) : AndroidViewModel(application) {
     private val database = AppDatabase.getDatabase(application)
     private val sessionDao = database.sessionDao()
-    private val bellPlayer = BellPlayer(application)
 
     private val _uiState = MutableStateFlow(MeditationUiState())
     val uiState: StateFlow<MeditationUiState> = _uiState.asStateFlow()
@@ -63,7 +66,54 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
         emptyList()
     )
 
-    private var timerJob: Job? = null
+    private var timerService: MeditationTimerService? = null
+    private var serviceBound = false
+
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            val localBinder = binder as MeditationTimerService.LocalBinder
+            timerService = localBinder.getService()
+            serviceBound = true
+            timerService?.setCallback(timerCallback)
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            timerService = null
+            serviceBound = false
+        }
+    }
+
+    private val timerCallback = object : MeditationTimerService.TimerCallback {
+        override fun onTick(secondsRemaining: Int, state: MeditationTimerService.ServiceState, intervalsCompleted: Int) {
+            _uiState.value = _uiState.value.copy(
+                currentSeconds = secondsRemaining,
+                intervalsCompleted = intervalsCompleted
+            )
+        }
+
+        override fun onStateChange(
+            state: MeditationTimerService.ServiceState,
+            sessionStartTime: LocalTime?,
+            sessionDate: LocalDate?
+        ) {
+            val timerState = when (state) {
+                MeditationTimerService.ServiceState.IDLE -> TimerState.IDLE
+                MeditationTimerService.ServiceState.COUNTDOWN -> TimerState.COUNTDOWN
+                MeditationTimerService.ServiceState.MEDITATING -> TimerState.MEDITATING
+                MeditationTimerService.ServiceState.FINISHED -> TimerState.FINISHED
+            }
+            _uiState.value = _uiState.value.copy(
+                timerState = timerState,
+                sessionStartTime = sessionStartTime,
+                sessionDate = sessionDate
+            )
+        }
+
+        override fun onFinished() {
+            saveSession()
+            reset()
+        }
+    }
 
     fun setCountdownSeconds(value: Int) {
         if (_uiState.value.timerState == TimerState.IDLE) {
@@ -91,127 +141,72 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
 
     fun setWhiteNoiseVolume(volume: Float) {
         _uiState.value = _uiState.value.copy(whiteNoiseVolume = volume.coerceIn(0f, 1f))
-        // Update volume if currently playing
+        // Update volume if service is running
         if (_uiState.value.timerState == TimerState.MEDITATING) {
-            bellPlayer.setWhiteNoiseVolume(volume)
+            timerService?.setWhiteNoiseVolume(volume)
         }
     }
 
     fun start() {
         if (_uiState.value.timerState != TimerState.IDLE) return
 
-        _uiState.value = _uiState.value.copy(
+        val context = getApplication<Application>()
+        val state = _uiState.value
+
+        _uiState.value = state.copy(
             timerState = TimerState.COUNTDOWN,
-            currentSeconds = _uiState.value.countdownSeconds,
+            currentSeconds = state.countdownSeconds,
             intervalsCompleted = 0,
             sessionStartTime = null,
             sessionDate = null
         )
 
-        startCountdownTimer()
-    }
-
-    private fun startCountdownTimer() {
-        timerJob?.cancel()
-        timerJob = viewModelScope.launch {
-            while (_uiState.value.currentSeconds > 0) {
-                delay(1000)
-                _uiState.value = _uiState.value.copy(
-                    currentSeconds = _uiState.value.currentSeconds - 1
-                )
-            }
-            // Countdown finished, start meditation
-            startMeditation()
-        }
-    }
-
-    private fun startMeditation() {
-        bellPlayer.playIntervalBell()
-
-        // Start white noise if volume > 0
-        if (_uiState.value.whiteNoiseVolume > 0f) {
-            bellPlayer.startWhiteNoise(_uiState.value.whiteNoiseVolume)
+        // Start and bind to the service
+        val serviceIntent = Intent(context, MeditationTimerService::class.java).apply {
+            action = MeditationTimerService.ACTION_START_COUNTDOWN
+            putExtra(MeditationTimerService.EXTRA_COUNTDOWN_SECONDS, state.countdownSeconds)
+            putExtra(MeditationTimerService.EXTRA_INTERVAL_SECONDS, state.intervalSeconds)
+            putExtra(MeditationTimerService.EXTRA_NUM_INTERVALS, state.numIntervals)
+            putExtra(MeditationTimerService.EXTRA_WHITE_NOISE_VOLUME, state.whiteNoiseVolume)
         }
 
-        val now = LocalTime.now()
-        val today = LocalDate.now()
-
-        _uiState.value = _uiState.value.copy(
-            timerState = TimerState.MEDITATING,
-            currentSeconds = _uiState.value.totalMeditationSeconds,
-            intervalsCompleted = 0,
-            sessionStartTime = now,
-            sessionDate = today
-        )
-
-        startMeditationTimer()
-    }
-
-    private fun startMeditationTimer() {
-        timerJob?.cancel()
-        timerJob = viewModelScope.launch {
-            val intervalSecs = _uiState.value.intervalSeconds
-            var elapsed = 0
-
-            while (_uiState.value.currentSeconds > 0) {
-                delay(1000)
-                elapsed++
-                _uiState.value = _uiState.value.copy(
-                    currentSeconds = _uiState.value.currentSeconds - 1
-                )
-
-                // Check if we've completed an interval
-                if (elapsed > 0 && elapsed % intervalSecs == 0) {
-                    val newIntervalsCompleted = _uiState.value.intervalsCompleted + 1
-                    _uiState.value = _uiState.value.copy(
-                        intervalsCompleted = newIntervalsCompleted
-                    )
-
-                    // Check if this is the final interval
-                    if (newIntervalsCompleted >= _uiState.value.numIntervals) {
-                        // Final bell
-                        bellPlayer.playFinalBell()
-                        finishSession(keepSession = true)
-                        return@launch
-                    } else {
-                        // Interval bell
-                        bellPlayer.playIntervalBell()
-                    }
-                }
-            }
-
-            // Timer reached zero (shouldn't happen normally, but handle it)
-            bellPlayer.playFinalBell()
-            finishSession(keepSession = true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(serviceIntent)
+        } else {
+            context.startService(serviceIntent)
         }
+
+        context.bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
 
     fun requestStop() {
         if (_uiState.value.timerState == TimerState.MEDITATING) {
-            timerJob?.cancel()
+            timerService?.pauseTimer()
             _uiState.value = _uiState.value.copy(showStopDialog = true)
         } else if (_uiState.value.timerState == TimerState.COUNTDOWN) {
             // During countdown, just cancel without dialog
-            timerJob?.cancel()
+            stopService()
             reset()
         }
     }
 
     fun confirmStop(keepSession: Boolean) {
         _uiState.value = _uiState.value.copy(showStopDialog = false)
-        finishSession(keepSession)
+        if (keepSession) {
+            saveSession()
+        }
+        stopService()
+        reset()
     }
 
     fun dismissStopDialog() {
-        // Resume the timer
         _uiState.value = _uiState.value.copy(showStopDialog = false)
-        startMeditationTimer()
+        timerService?.resumeTimer()
     }
 
-    private fun finishSession(keepSession: Boolean) {
+    private fun saveSession() {
         val state = _uiState.value
-
-        if (keepSession && state.sessionStartTime != null && state.sessionDate != null) {
+        if (state.sessionStartTime != null && state.sessionDate != null) {
             val elapsedSeconds = state.totalMeditationSeconds - state.currentSeconds
 
             if (elapsedSeconds > 0) {
@@ -226,12 +221,27 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
                 }
             }
         }
+    }
 
-        reset()
+    private fun stopService() {
+        timerService?.stopTimer()
+        unbindFromService()
+    }
+
+    private fun unbindFromService() {
+        if (serviceBound) {
+            timerService?.setCallback(null)
+            try {
+                getApplication<Application>().unbindService(serviceConnection)
+            } catch (e: Exception) {
+                // Service may already be unbound
+            }
+            serviceBound = false
+            timerService = null
+        }
     }
 
     private fun reset() {
-        bellPlayer.stopWhiteNoise()
         _uiState.value = _uiState.value.copy(
             timerState = TimerState.IDLE,
             currentSeconds = 0,
@@ -266,7 +276,6 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
 
     override fun onCleared() {
         super.onCleared()
-        timerJob?.cancel()
-        bellPlayer.release()
+        unbindFromService()
     }
 }
