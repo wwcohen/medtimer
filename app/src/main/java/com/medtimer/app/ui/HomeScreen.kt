@@ -106,18 +106,23 @@ fun HomeScreen(
 
             // Settings (only when idle)
             if (uiState.timerState == TimerState.IDLE) {
+                // Countdown on its own row
+                NumberPicker(
+                    value = uiState.countdownSeconds,
+                    onValueChange = viewModel::setCountdownSeconds,
+                    minValue = 1,
+                    maxValue = 30,
+                    label = "Countdown (sec)",
+                    enabled = uiState.timerState == TimerState.IDLE
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Interval and Intervals on second row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    NumberPicker(
-                        value = uiState.countdownSeconds,
-                        onValueChange = viewModel::setCountdownSeconds,
-                        minValue = 1,
-                        maxValue = 30,
-                        label = "Countdown (sec)",
-                        enabled = uiState.timerState == TimerState.IDLE
-                    )
                     NumberPicker(
                         value = uiState.intervalMinutes,
                         onValueChange = viewModel::setIntervalMinutes,
@@ -156,6 +161,19 @@ fun HomeScreen(
             }
 
             Spacer(modifier = Modifier.weight(1f))
+
+            // Debug toggle (only when idle) - placed above Start button
+            if (uiState.timerState == TimerState.IDLE) {
+                OutlinedButton(
+                    onClick = { viewModel.toggleDebugMode() },
+                    modifier = Modifier.padding(bottom = 16.dp)
+                ) {
+                    Text(
+                        text = if (uiState.debugMode) "Debug: ON" else "Debug: OFF",
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
 
             // Control buttons
             when (uiState.timerState) {
@@ -202,22 +220,7 @@ fun HomeScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Debug toggle (only when idle)
-            if (uiState.timerState == TimerState.IDLE) {
-                OutlinedButton(
-                    onClick = { viewModel.toggleDebugMode() },
-                    modifier = Modifier.padding(8.dp)
-                ) {
-                    Text(
-                        text = if (uiState.debugMode) "Debug: ON" else "Debug: OFF",
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(32.dp))
         }
 
         // Stop confirmation dialog
