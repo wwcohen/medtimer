@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Simple meditation circle/timer icon -->
+    <path
+        android:fillColor="#6B7B5E"
+        android:pathData="M54,27
+            A27,27 0 1,1 53.99,27
+            M54,33
+            A21,21 0 1,0 54.01,33
+            M54,27 L54,35
+            M54,73 L54,81
+            M27,54 L35,54
+            M73,54 L81,54"/>
+    <path
+        android:fillColor="#6B7B5E"
+        android:strokeWidth="3"
+        android:strokeColor="#6B7B5E"
+        android:pathData="M54,54 L54,40"/>
+    <path
+        android:fillColor="#8B7355"
+        android:strokeWidth="2"
+        android:strokeColor="#8B7355"
+        android:pathData="M54,54 L66,54"/>
+</vector>

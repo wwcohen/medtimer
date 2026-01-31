@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MedTimer</string>
+    <string name="start">Start</string>
+    <string name="stop">Stop</string>
+    <string name="debug_mode">Debug</string>
+    <string name="history">History</string>
+    <string name="export_csv">Export CSV</string>
+    <string name="clear_history">Clear History</string>
+    <string name="countdown_seconds">Countdown (sec)</string>
+    <string name="interval_minutes">Interval (min)</string>
+    <string name="num_intervals">Intervals</string>
+    <string name="keep_session">Keep Session</string>
+    <string name="discard_session">Discard Session</string>
+    <string name="session_stopped">Session Stopped</string>
+    <string name="session_stopped_message">Do you want to keep or discard this session?</string>
+    <string name="no_sessions">No meditation sessions yet</string>
+    <string name="total_time">Total: %1$d min</string>
+</resources>
