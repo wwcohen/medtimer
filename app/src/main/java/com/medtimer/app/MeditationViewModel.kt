@@ -35,7 +35,8 @@ data class MeditationUiState(
     val debugMode: Boolean = false,     // When true, N counts seconds instead of minutes
     val showStopDialog: Boolean = false,
     val sessionStartTime: LocalTime? = null,
-    val sessionDate: LocalDate? = null
+    val sessionDate: LocalDate? = null,
+    val whiteNoiseVolume: Float = 0f  // 0.0 = off, 1.0 = full volume
 ) {
     val totalMeditationSeconds: Int
         get() = if (debugMode) {
@@ -88,6 +89,14 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun setWhiteNoiseVolume(volume: Float) {
+        _uiState.value = _uiState.value.copy(whiteNoiseVolume = volume.coerceIn(0f, 1f))
+        // Update volume if currently playing
+        if (_uiState.value.timerState == TimerState.MEDITATING) {
+            bellPlayer.setWhiteNoiseVolume(volume)
+        }
+    }
+
     fun start() {
         if (_uiState.value.timerState != TimerState.IDLE) return
 
@@ -118,6 +127,11 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun startMeditation() {
         bellPlayer.playIntervalBell()
+
+        // Start white noise if volume > 0
+        if (_uiState.value.whiteNoiseVolume > 0f) {
+            bellPlayer.startWhiteNoise(_uiState.value.whiteNoiseVolume)
+        }
 
         val now = LocalTime.now()
         val today = LocalDate.now()
@@ -217,6 +231,7 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private fun reset() {
+        bellPlayer.stopWhiteNoise()
         _uiState.value = _uiState.value.copy(
             timerState = TimerState.IDLE,
             currentSeconds = 0,

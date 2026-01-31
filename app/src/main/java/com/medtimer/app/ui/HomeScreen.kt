@@ -18,6 +18,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -157,6 +159,35 @@ fun HomeScreen(
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // White noise volume slider (visible when idle or meditating)
+            if (uiState.timerState == TimerState.IDLE || uiState.timerState == TimerState.MEDITATING) {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = if (uiState.whiteNoiseVolume > 0f) {
+                        "White Noise: ${(uiState.whiteNoiseVolume * 100).toInt()}%"
+                    } else {
+                        "White Noise: Off"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Slider(
+                    value = uiState.whiteNoiseVolume,
+                    onValueChange = { viewModel.setWhiteNoiseVolume(it) },
+                    valueRange = 0f..1f,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp),
+                    colors = SliderDefaults.colors(
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                        inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
                 )
             }
 
