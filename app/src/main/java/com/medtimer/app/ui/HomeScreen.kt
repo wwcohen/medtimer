@@ -65,7 +65,7 @@ fun HomeScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "MedTimer",
+                    text = "ZenTimer",
                     style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -120,25 +120,25 @@ fun HomeScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Interval and Intervals on second row
+                // Intervals and Interval on second row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    NumberPicker(
-                        value = uiState.intervalMinutes,
-                        onValueChange = viewModel::setIntervalMinutes,
-                        minValue = 1,
-                        maxValue = 15,
-                        label = if (uiState.debugMode) "Interval (sec)" else "Interval (min)",
-                        enabled = uiState.timerState == TimerState.IDLE
-                    )
                     NumberPicker(
                         value = uiState.numIntervals,
                         onValueChange = viewModel::setNumIntervals,
                         minValue = 1,
                         maxValue = 10,
                         label = "Intervals",
+                        enabled = uiState.timerState == TimerState.IDLE
+                    )
+                    NumberPicker(
+                        value = uiState.intervalMinutes,
+                        onValueChange = viewModel::setIntervalMinutes,
+                        minValue = 1,
+                        maxValue = 15,
+                        label = if (uiState.debugMode) "Interval (sec)" else "Interval (min)",
                         enabled = uiState.timerState == TimerState.IDLE
                     )
                 }
@@ -194,17 +194,18 @@ fun HomeScreen(
             Spacer(modifier = Modifier.weight(1f))
 
             // Debug toggle (only when idle) - placed above Start button
-            if (uiState.timerState == TimerState.IDLE) {
-                OutlinedButton(
-                    onClick = { viewModel.toggleDebugMode() },
-                    modifier = Modifier.padding(bottom = 16.dp)
-                ) {
-                    Text(
-                        text = if (uiState.debugMode) "Debug: ON" else "Debug: OFF",
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                }
-            }
+            // Disabled for production - uncomment to enable debug mode UI
+            // if (uiState.timerState == TimerState.IDLE) {
+            //     OutlinedButton(
+            //         onClick = { viewModel.toggleDebugMode() },
+            //         modifier = Modifier.padding(bottom = 16.dp)
+            //     ) {
+            //         Text(
+            //             text = if (uiState.debugMode) "Debug: ON" else "Debug: OFF",
+            //             style = MaterialTheme.typography.labelMedium
+            //         )
+            //     }
+            // }
 
             // Control buttons
             when (uiState.timerState) {

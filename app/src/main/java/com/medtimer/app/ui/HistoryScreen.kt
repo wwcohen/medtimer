@@ -15,27 +15,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -46,6 +38,7 @@ import com.medtimer.app.MeditationViewModel
 import com.medtimer.app.R
 import com.medtimer.app.data.Session
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,7 +50,11 @@ fun HistoryScreen(
     val sessions by viewModel.sessions.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var showClearDialog by remember { mutableStateOf(false) }
+
+    // Calculate statistics
+    val today = LocalDate.now()
+    val stats7Days = calculateStats(sessions, today, 7)
+    val stats30Days = calculateStats(sessions, today, 30)
 
     Column(
         modifier = modifier
@@ -97,129 +94,136 @@ fun HistoryScreen(
             }
         } else {
             Column(modifier = Modifier.padding(16.dp)) {
-                // Action buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = {
-                            scope.launch {
-                                val csv = viewModel.exportSessionsCsv()
-                                val intent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/csv"
-                                    putExtra(Intent.EXTRA_TEXT, csv)
-                                    putExtra(Intent.EXTRA_SUBJECT, "MedTimer Sessions")
-                                }
-                                context.startActivity(
-                                    Intent.createChooser(intent, "Export Sessions")
-                                )
+                // Export button
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            val csv = viewModel.exportSessionsCsv()
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/csv"
+                                putExtra(Intent.EXTRA_TEXT, csv)
+                                putExtra(Intent.EXTRA_SUBJECT, "ZenTimer Sessions")
                             }
-                        },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(stringResource(R.string.export_csv))
-                    }
-
-                    OutlinedButton(
-                        onClick = { showClearDialog = true },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(stringResource(R.string.clear_history))
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Session list
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                            context.startActivity(
+                                Intent.createChooser(intent, "Export Sessions")
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    items(sessions, key = { it.id }) { session ->
-                        SessionCard(
-                            session = session,
-                            onDelete = { viewModel.deleteSession(session) }
-                        )
+                    Text(stringResource(R.string.export_csv))
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Session list (last 14 items)
+                val recentSessions = sessions.take(14)
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    items(recentSessions, key = { it.id }) { session ->
+                        SessionRow(session = session)
                     }
                 }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Statistics section
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                StatsSection(
+                    label = "Last 7 days",
+                    avgTime = stats7Days.avgMinutes,
+                    percentage = stats7Days.percentDays
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                StatsSection(
+                    label = "Last 30 days",
+                    avgTime = stats30Days.avgMinutes,
+                    percentage = stats30Days.percentDays
+                )
             }
         }
     }
+}
 
-    // Clear history confirmation dialog
-    if (showClearDialog) {
-        AlertDialog(
-            onDismissRequest = { showClearDialog = false },
-            title = { Text("Clear History?") },
-            text = { Text("This will delete all meditation session records. This cannot be undone.") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.clearAllSessions()
-                        showClearDialog = false
-                    }
-                ) {
-                    Text("Clear All")
-                }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = { showClearDialog = false }) {
-                    Text("Cancel")
-                }
-            }
+private data class PeriodStats(
+    val avgMinutes: Int,
+    val percentDays: Int
+)
+
+private fun calculateStats(sessions: List<Session>, today: LocalDate, days: Int): PeriodStats {
+    val startDate = today.minusDays(days.toLong() - 1)
+    val sessionsInPeriod = sessions.filter { session ->
+        try {
+            val sessionDate = LocalDate.parse(session.date)
+            !sessionDate.isBefore(startDate) && !sessionDate.isAfter(today)
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    if (sessionsInPeriod.isEmpty()) {
+        return PeriodStats(avgMinutes = 0, percentDays = 0)
+    }
+
+    val totalSeconds = sessionsInPeriod.sumOf { it.elapsedSeconds }
+    val avgMinutes = (totalSeconds / sessionsInPeriod.size) / 60
+
+    val daysWithSessions = sessionsInPeriod.map { it.date }.distinct().size
+    val percentDays = (daysWithSessions * 100) / days
+
+    return PeriodStats(avgMinutes = avgMinutes, percentDays = percentDays)
+}
+
+@Composable
+private fun StatsSection(
+    label: String,
+    avgTime: Int,
+    percentage: Int,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = "${avgTime}m avg, ${percentage}% days",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface
         )
     }
 }
 
 @Composable
-private fun SessionCard(
+private fun SessionRow(
     session: Session,
-    onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    text = session.formattedDate,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = session.formattedStartTime,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = session.formattedDuration,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
+        Text(
+            text = "${session.formattedDate}, ${session.formattedStartTime}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = session.formattedDuration,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
     }
 }
+
