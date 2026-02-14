@@ -37,8 +37,11 @@ import androidx.compose.ui.unit.dp
 import com.medtimer.app.MeditationViewModel
 import com.medtimer.app.R
 import com.medtimer.app.data.Session
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.launch
+import java.io.File
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,10 +102,20 @@ fun HistoryScreen(
                     onClick = {
                         scope.launch {
                             val csv = viewModel.exportSessionsCsv()
+                            val dateStr = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE)
+                            val fileName = "ZenTimer_Sessions_$dateStr.csv"
+                            val file = File(context.cacheDir, fileName)
+                            file.writeText(csv)
+                            val uri = FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.fileprovider",
+                                file
+                            )
                             val intent = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/csv"
-                                putExtra(Intent.EXTRA_TEXT, csv)
-                                putExtra(Intent.EXTRA_SUBJECT, "ZenTimer Sessions")
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                putExtra(Intent.EXTRA_SUBJECT, fileName)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
                             context.startActivity(
                                 Intent.createChooser(intent, "Export Sessions")
@@ -170,7 +183,7 @@ private fun calculateStats(sessions: List<Session>, today: LocalDate, days: Int)
     }
 
     val totalSeconds = sessionsInPeriod.sumOf { it.elapsedSeconds }
-    val avgMinutes = (totalSeconds / sessionsInPeriod.size) / 60
+    val avgMinutes = (totalSeconds / days) / 60
 
     val daysWithSessions = sessionsInPeriod.map { it.date }.distinct().size
     val percentDays = (daysWithSessions * 100) / days
