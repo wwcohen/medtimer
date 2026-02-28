@@ -23,14 +23,25 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import android.content.Context
+import android.database.ContentObserver
+import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import com.medtimer.app.MeditationViewModel
 import com.medtimer.app.R
 import com.medtimer.app.TimerState
@@ -74,7 +85,7 @@ fun HomeScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Timer display
             val timerLabel = when (uiState.timerState) {
@@ -93,7 +104,7 @@ fun HomeScreen(
                 seconds = displaySeconds,
                 isCountdown = uiState.timerState == TimerState.COUNTDOWN,
                 label = timerLabel,
-                modifier = Modifier.padding(vertical = 32.dp)
+                modifier = Modifier.padding(vertical = 12.dp)
             )
 
             // Intervals info when meditating
@@ -162,6 +173,77 @@ fun HomeScreen(
                 )
             }
 
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Phone volume slider (visible when idle or meditating)
+            if (uiState.timerState == TimerState.IDLE || uiState.timerState == TimerState.MEDITATING) {
+                val context = LocalContext.current
+                val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+                val maxVolume = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
+                var phoneVolume by remember { mutableIntStateOf(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)) }
+
+                // Observe system volume changes (e.g. hardware buttons)
+                DisposableEffect(Unit) {
+                    val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+                        override fun onChange(selfChange: Boolean) {
+                            phoneVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                        }
+                    }
+                    context.contentResolver.registerContentObserver(
+                        Settings.System.CONTENT_URI,
+                        true,
+                        observer
+                    )
+                    onDispose {
+                        context.contentResolver.unregisterContentObserver(observer)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp)
+                ) {
+                    Text(
+                        text = "Volume: ${phoneVolume * 100 / maxVolume}%",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    TextButton(
+                        onClick = {
+                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume, 0)
+                            phoneVolume = maxVolume
+                        },
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Text("MAX", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+
+                Slider(
+                    value = phoneVolume.toFloat(),
+                    onValueChange = {
+                        val newVolume = it.toInt()
+                        phoneVolume = newVolume
+                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume, 0)
+                    },
+                    valueRange = 0f..maxVolume.toFloat(),
+                    steps = maxVolume - 1,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp),
+                    colors = SliderDefaults.colors(
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                        inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                )
+            }
+
             // White noise volume slider (visible when idle or meditating)
             if (uiState.timerState == TimerState.IDLE || uiState.timerState == TimerState.MEDITATING) {
                 Spacer(modifier = Modifier.height(16.dp))
@@ -213,7 +295,7 @@ fun HomeScreen(
                     Button(
                         onClick = { viewModel.start() },
                         modifier = Modifier
-                            .size(120.dp)
+                            .size(88.dp)
                             .clip(CircleShape),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = ButtonStart
@@ -221,7 +303,7 @@ fun HomeScreen(
                     ) {
                         Text(
                             text = stringResource(R.string.start),
-                            style = MaterialTheme.typography.titleLarge
+                            style = MaterialTheme.typography.titleMedium
                         )
                     }
                 }
@@ -230,7 +312,7 @@ fun HomeScreen(
                     Button(
                         onClick = { viewModel.requestStop() },
                         modifier = Modifier
-                            .size(120.dp)
+                            .size(88.dp)
                             .clip(CircleShape),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = ButtonStop
@@ -238,7 +320,7 @@ fun HomeScreen(
                     ) {
                         Text(
                             text = stringResource(R.string.stop),
-                            style = MaterialTheme.typography.titleLarge
+                            style = MaterialTheme.typography.titleMedium
                         )
                     }
                 }
@@ -252,7 +334,7 @@ fun HomeScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(16.dp))
         }
 
         // Stop confirmation dialog
