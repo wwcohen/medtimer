@@ -1,6 +1,9 @@
 package com.medtimer.app.ui
 
 import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -22,12 +26,16 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -43,6 +51,8 @@ import java.io.File
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
+private data class RestoreMessage(val isError: Boolean, val text: String)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
@@ -53,6 +63,43 @@ fun HistoryScreen(
     val sessions by viewModel.sessions.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    var restoreMessage by remember { mutableStateOf<RestoreMessage?>(null) }
+
+    val backupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val json = viewModel.exportSessionsJson()
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+                out.write(json.toByteArray(Charsets.UTF_8))
+            }
+        }
+    }
+
+    val restoreLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            try {
+                val json = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use {
+                    it.readText()
+                } ?: throw IllegalStateException("Could not read file")
+                val result = viewModel.importSessionsJson(json)
+                restoreMessage = RestoreMessage(
+                    isError = false,
+                    text = "Imported ${result.added} new sessions, skipped ${result.skipped} duplicates."
+                )
+            } catch (e: Exception) {
+                restoreMessage = RestoreMessage(
+                    isError = true,
+                    text = e.message ?: "Unknown error"
+                )
+            }
+        }
+    }
 
     // Calculate statistics
     val today = LocalDate.now()
@@ -81,54 +128,82 @@ fun HistoryScreen(
             )
         )
 
-        if (sessions.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(32.dp),
-                contentAlignment = Alignment.Center
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Export CSV (existing behavior)
+            OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        val csv = viewModel.exportSessionsCsv()
+                        val dateStr = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE)
+                        val fileName = "ZenTimer_Sessions_$dateStr.csv"
+                        val file = File(context.cacheDir, fileName)
+                        file.writeText(csv)
+                        val uri = FileProvider.getUriForFile(
+                            context,
+                            "${context.packageName}.fileprovider",
+                            file
+                        )
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/csv"
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            putExtra(Intent.EXTRA_SUBJECT, fileName)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(
+                            Intent.createChooser(intent, "Export Sessions")
+                        )
+                    }
+                },
+                enabled = sessions.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text = stringResource(R.string.no_sessions),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
-                )
+                Text(stringResource(R.string.export_csv))
             }
-        } else {
-            Column(modifier = Modifier.padding(16.dp)) {
-                // Export button
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Backup / Restore row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 OutlinedButton(
                     onClick = {
-                        scope.launch {
-                            val csv = viewModel.exportSessionsCsv()
-                            val dateStr = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE)
-                            val fileName = "ZenTimer_Sessions_$dateStr.csv"
-                            val file = File(context.cacheDir, fileName)
-                            file.writeText(csv)
-                            val uri = FileProvider.getUriForFile(
-                                context,
-                                "${context.packageName}.fileprovider",
-                                file
-                            )
-                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/csv"
-                                putExtra(Intent.EXTRA_STREAM, uri)
-                                putExtra(Intent.EXTRA_SUBJECT, fileName)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                            context.startActivity(
-                                Intent.createChooser(intent, "Export Sessions")
-                            )
-                        }
+                        val dateStr = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE)
+                        backupLauncher.launch("ZenTimer_Backup_$dateStr.json")
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    enabled = sessions.isNotEmpty(),
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Text(stringResource(R.string.export_csv))
+                    Text(stringResource(R.string.backup))
                 }
+                OutlinedButton(
+                    onClick = {
+                        restoreLauncher.launch(arrayOf("application/json", "*/*"))
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(stringResource(R.string.restore))
+                }
+            }
 
-                Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
+            if (sessions.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.no_sessions),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
                 // Session list (last 14 items)
                 val recentSessions = sessions.take(14)
                 LazyColumn(
@@ -159,6 +234,26 @@ fun HistoryScreen(
                 )
             }
         }
+    }
+
+    restoreMessage?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { restoreMessage = null },
+            title = {
+                Text(
+                    stringResource(
+                        if (msg.isError) R.string.restore_failed_title
+                        else R.string.restore_result_title
+                    )
+                )
+            },
+            text = { Text(msg.text) },
+            confirmButton = {
+                TextButton(onClick = { restoreMessage = null }) {
+                    Text(stringResource(R.string.ok))
+                }
+            }
+        )
     }
 }
 
@@ -239,4 +334,3 @@ private fun SessionRow(
         )
     }
 }
-

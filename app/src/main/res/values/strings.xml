@@ -6,6 +6,11 @@
     <string name="debug_mode">Debug</string>
     <string name="history">History</string>
     <string name="export_csv">Export CSV</string>
+    <string name="backup">Backup</string>
+    <string name="restore">Restore</string>
+    <string name="restore_result_title">Restore Complete</string>
+    <string name="restore_failed_title">Restore Failed</string>
+    <string name="ok">OK</string>
     <string name="clear_history">Clear History</string>
     <string name="countdown_seconds">Countdown (sec)</string>
     <string name="interval_minutes">Interval (min)</string>

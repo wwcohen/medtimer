@@ -18,6 +18,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -272,6 +275,59 @@ class MeditationViewModel(application: Application) : AndroidViewModel(applicati
             sb.appendLine(session.toCsvRow())
         }
         return sb.toString()
+    }
+
+    suspend fun exportSessionsJson(): String {
+        val all = sessionDao.getAllSessionsList()
+        val arr = JSONArray()
+        all.forEach { s ->
+            arr.put(JSONObject().apply {
+                put("date", s.date)
+                put("startTime", s.startTime)
+                put("elapsedSeconds", s.elapsedSeconds)
+            })
+        }
+        return JSONObject().apply {
+            put("format", BACKUP_FORMAT)
+            put("version", BACKUP_VERSION)
+            put("exportedAt", Instant.now().toString())
+            put("sessions", arr)
+        }.toString(2)
+    }
+
+    data class ImportResult(val added: Int, val skipped: Int)
+
+    suspend fun importSessionsJson(json: String): ImportResult {
+        val root = JSONObject(json)
+        if (root.optString("format") != BACKUP_FORMAT) {
+            throw IllegalArgumentException("Not a ZenTimer backup file")
+        }
+        val arr = root.getJSONArray("sessions")
+        val seen = sessionDao.getAllSessionsList()
+            .map { it.date to it.startTime }
+            .toMutableSet()
+        val toInsert = mutableListOf<Session>()
+        var skipped = 0
+        for (i in 0 until arr.length()) {
+            val obj = arr.getJSONObject(i)
+            val date = obj.getString("date")
+            val start = obj.getString("startTime")
+            val elapsed = obj.getInt("elapsedSeconds")
+            val key = date to start
+            if (key in seen) {
+                skipped++
+            } else {
+                seen.add(key)
+                toInsert.add(Session(date = date, startTime = start, elapsedSeconds = elapsed))
+            }
+        }
+        if (toInsert.isNotEmpty()) sessionDao.insertAll(toInsert)
+        return ImportResult(added = toInsert.size, skipped = skipped)
+    }
+
+    companion object {
+        private const val BACKUP_FORMAT = "medtimer-backup"
+        private const val BACKUP_VERSION = 1
     }
 
     override fun onCleared() {
