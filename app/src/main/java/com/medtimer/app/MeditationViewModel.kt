@@ -36,7 +36,7 @@ data class MeditationUiState(
     val timerState: TimerState = TimerState.IDLE,
     val countdownSeconds: Int = 10,     // C: seconds before meditation
     val intervalMinutes: Int = 7,       // N: minutes between bells
-    val numIntervals: Int = 4,          // K: number of intervals
+    val numIntervals: Int = 5,          // K: number of intervals
     val currentSeconds: Int = 0,        // Current timer value
     val intervalsCompleted: Int = 0,
     val debugMode: Boolean = false,     // When true, N counts seconds instead of minutes

@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build Commands
 
-```bash
-./gradlew assembleDebug      # Build debug APK
-./gradlew assembleRelease    # Build release APK
-./gradlew test               # Run unit tests
-./gradlew connectedAndroidTest  # Run instrumented tests on connected device
-```
+**Note:** Gradle is not installed locally and there is no `gradlew` wrapper in the repo. Builds and tests are run from Android Studio, not the command line. Do not attempt to invoke `./gradlew` or `gradle` from the shell — ask the user to build/run from Android Studio instead.
+
+Reference (run inside Android Studio):
+- Build debug APK / Build release APK
+- Run unit tests
+- Run instrumented tests on connected device
 
 ## Project Overview
 

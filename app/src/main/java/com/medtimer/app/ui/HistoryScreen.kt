@@ -105,6 +105,7 @@ fun HistoryScreen(
     val today = LocalDate.now()
     val stats7Days = calculateStats(sessions, today, 7)
     val stats30Days = calculateStats(sessions, today, 30)
+    val statsOverall = calculateOverallStats(sessions, today)
 
     Column(
         modifier = modifier
@@ -232,6 +233,12 @@ fun HistoryScreen(
                     avgTime = stats30Days.avgMinutes,
                     percentage = stats30Days.percentDays
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                StatsSection(
+                    label = "Overall",
+                    avgTime = statsOverall.avgMinutes,
+                    percentage = statsOverall.percentDays
+                )
             }
         }
     }
@@ -282,6 +289,37 @@ private fun calculateStats(sessions: List<Session>, today: LocalDate, days: Int)
 
     val daysWithSessions = sessionsInPeriod.map { it.date }.distinct().size
     val percentDays = (daysWithSessions * 100) / days
+
+    return PeriodStats(avgMinutes = avgMinutes, percentDays = percentDays)
+}
+
+private fun calculateOverallStats(sessions: List<Session>, today: LocalDate): PeriodStats {
+    if (sessions.isEmpty()) {
+        return PeriodStats(avgMinutes = 0, percentDays = 0)
+    }
+
+    val parsedDates = sessions.mapNotNull { session ->
+        try {
+            LocalDate.parse(session.date)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    if (parsedDates.isEmpty()) {
+        return PeriodStats(avgMinutes = 0, percentDays = 0)
+    }
+
+    val earliest = parsedDates.min()
+    val spanDays = (java.time.temporal.ChronoUnit.DAYS.between(earliest, today) + 1)
+        .coerceAtLeast(1L)
+        .toInt()
+
+    val totalSeconds = sessions.sumOf { it.elapsedSeconds }
+    val avgMinutes = (totalSeconds / spanDays) / 60
+
+    val daysWithSessions = sessions.map { it.date }.distinct().size
+    val percentDays = (daysWithSessions * 100) / spanDays
 
     return PeriodStats(avgMinutes = avgMinutes, percentDays = percentDays)
 }
